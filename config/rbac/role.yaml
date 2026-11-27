@@ -95,7 +95,6 @@ rules:
   - promoter.argoproj.io
   resources:
   - changetransferpolicies
-  - commitstatuses
   - pullrequests
   - restoreactivecommits
   verbs:
@@ -110,6 +109,7 @@ rules:
   - promoter.argoproj.io
   resources:
   - changetransferpolicyhistories
+  - commitstatuses
   verbs:
   - create
   - delete

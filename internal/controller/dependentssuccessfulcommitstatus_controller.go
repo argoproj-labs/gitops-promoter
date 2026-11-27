@@ -84,7 +84,7 @@ type DependentsSuccessfulCommitStatusReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=dependentssuccessfulcommitstatuses/finalizers,verbs=update
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;patch;create;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch
 
 // Reconcile reads the referenced PromotionStrategy and, using the dependency graph declared
