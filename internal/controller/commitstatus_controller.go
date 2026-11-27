@@ -129,7 +129,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		cs.Status.Id = ""
 	default:
 		commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
-		if err != nil || commitStatusProvider == nil {
+		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
 		}
 
@@ -248,7 +248,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		//nolint:wrapcheck // error wrapping not needed for fake provider
 		return fake.NewFakeCommitStatusProvider(*secret)
 	default:
-		return nil, nil
+		return nil, fmt.Errorf("no supported SCM is configured on %s %q", gitRepo.Spec.ScmProviderRef.Kind, scmProvider.GetName())
 	}
 }
 

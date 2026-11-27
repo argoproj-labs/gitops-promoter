@@ -26,7 +26,10 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -538,5 +541,58 @@ var _ = Describe("publishedByThisInstance", func() {
 		Expect(publishedByThisInstance(cs)).To(BeTrue())
 		cs.Status.InstanceID = nil
 		Expect(publishedByThisInstance(cs)).To(BeFalse(), "status stamped by the default install")
+	})
+})
+
+var _ = Describe("CommitStatus reconcile with an ScmProvider that configures no SCM", func() {
+	It("returns a clear error instead of wrapping a nil error", func() {
+		ctx := context.Background()
+		restore := settings.SetControllerInstanceIDForTest(nil)
+		defer restore()
+
+		const ns = "default"
+		cs := &promoterv1alpha1.CommitStatus{
+			Name:      "no-scm",
+			Namespace: ns,
+			Spec: promoterv1alpha1.CommitStatusSpec{
+				RepositoryReference: promoterv1alpha1.ObjectReference{Name: "no-scm"},
+				Sha:                 "abcdef1234567890abcdef1234567890abcdef12",
+				Name:                "test",
+				Phase:               promoterv1alpha1.CommitPhasePending,
+				PublishTo:           &[]promoterv1alpha1.CommitStatusPublishTo{promoterv1alpha1.CommitStatusPublishToSCM},
+			},
+		}
+		c := fake.NewClientBuilder().
+			WithScheme(utils.GetScheme()).
+			WithStatusSubresource(&promoterv1alpha1.CommitStatus{}).
+			WithObjects(
+				&promoterv1alpha1.ControllerConfiguration{Name: settings.ControllerConfigurationName, Namespace: ns},
+				cs,
+				&promoterv1alpha1.GitRepository{
+					Name:      "no-scm",
+					Namespace: ns,
+					Spec: promoterv1alpha1.GitRepositorySpec{
+						ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{Kind: promoterv1alpha1.ScmProviderKind, Name: "no-scm"},
+					},
+				},
+				&promoterv1alpha1.ScmProvider{
+					Name:      "no-scm",
+					Namespace: ns,
+					Spec:      promoterv1alpha1.ScmProviderSpec{SecretRef: &v1.LocalObjectReference{Name: "no-scm"}},
+				},
+				&v1.Secret{Name: "no-scm", Namespace: ns},
+			).
+			Build()
+		r := &CommitStatusReconciler{
+			Client:      c,
+			Scheme:      utils.GetScheme(),
+			Recorder:    events.NewFakeRecorder(10),
+			SettingsMgr: settings.NewManager(c, c, settings.ManagerConfig{ControllerNamespace: ns}),
+		}
+
+		_, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: cs.Name}})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).NotTo(ContainSubstring("%!"))
+		Expect(err).To(MatchError(ContainSubstring(`no supported SCM is configured on ScmProvider "no-scm"`)))
 	})
 })
