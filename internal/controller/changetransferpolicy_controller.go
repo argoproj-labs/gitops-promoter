@@ -398,12 +398,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ChangeTransferPolicy{},
-			builder.WithPredicates(predicate.Or(
-				predicate.GenerationChangedPredicate{},
-				// Webhooks trigger reconciliations by bumping an annotation.
-				// TODO: use a custom predicate to only trigger on the specific annotation change.
-				predicate.AnnotationChangedPredicate{},
-			))).
+			builder.WithPredicates(changeTransferPolicyPredicate())).
 		// CommitStatuses are not owned by ChangeTransferPolicies; they are matched by SHA. Waking on the
 		// CommitStatus spec (which this controller reads) rather than on its SCM publish means a gate's
 		// result reaches the policy even while the SCM is slow or unavailable.
@@ -2160,6 +2155,39 @@ func assembleCommitMessageWithTrailers(base string, commitTrailers trailers) str
 	return fmt.Sprintf("%s\n\n%s", base, commitTrailers)
 }
 
+// changeTransferPolicyPredicate filters the events on ChangeTransferPolicies themselves that start a reconcile.
+func changeTransferPolicyPredicate() predicate.Predicate {
+	return predicate.Or(
+		predicate.GenerationChangedPredicate{},
+		// Webhooks trigger reconciliations by bumping an annotation.
+		// TODO: use a custom predicate to only trigger on the specific annotation change.
+		predicate.AnnotationChangedPredicate{},
+		hydratedShaChangedPredicate(),
+	)
+}
+
+// hydratedShaChangedPredicate passes a ChangeTransferPolicy update whose recorded active or proposed
+// hydrated SHA changed. The CommitStatus watch maps CommitStatuses to policies through those SHAs, and
+// a policy records a new one only when its reconcile ends. A CommitStatus for the new SHA that changed
+// during that reconcile mapped to no policy, so reconcile once more after the new SHA is in the cache to
+// read its current phase. That follow-up reconcile records the same SHAs and does not pass again.
+func hydratedShaChangedPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool { return false },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldCTP, okOld := e.ObjectOld.(*promoterv1alpha1.ChangeTransferPolicy)
+			newCTP, okNew := e.ObjectNew.(*promoterv1alpha1.ChangeTransferPolicy)
+			if !okOld || !okNew {
+				return false
+			}
+			return oldCTP.Status.Active.Hydrated.Sha != newCTP.Status.Active.Hydrated.Sha ||
+				oldCTP.Status.Proposed.Hydrated.Sha != newCTP.Status.Proposed.Hydrated.Sha
+		},
+		DeleteFunc:  func(event.DeleteEvent) bool { return false },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+}
+
 // pullRequestUpdateEnqueuesChangeTransferPolicyPredicate limits CTP reconciles triggered by owned
 // PullRequests. Without it, bare Owns(PullRequest) re-enqueues CTP on every PR status write and can
 // drive a CTP→PR→CTP feedback loop (PR SCM sync → status churn → CTP SSA → PR generation bump → repeat).
@@ -2302,11 +2330,6 @@ func enqueueChangeTransferPoliciesForCommitStatus(c client.Client) handler.Funcs
 // An empty SHA is never looked up: the hydrated-SHA indexes file every policy that has not recorded a
 // hydrated SHA yet (new, or failing early) under "", across all namespaces, and enqueueing all of them
 // for each new CommitStatus would cost each one a reconcile with git network calls.
-//
-// This runs on the CommitStatus informer's delivery goroutine. The reads skip read-your-writes
-// consistency: ChangeTransferPolicy status is written continuously, and waiting for each of those
-// writes to reach the cache would serialize CommitStatus event delivery behind them. The policy
-// re-reads everything it needs when it reconciles.
 func changeTransferPoliciesForShas(ctx context.Context, c client.Client, shas ...string) []types.NamespacedName {
 	logger := log.FromContext(ctx)
 
@@ -2321,7 +2344,6 @@ func changeTransferPoliciesForShas(ctx context.Context, c client.Client, shas ..
 			if err := c.List(ctx, &ctps,
 				client.MatchingFields{field: sha},
 				client.UnsafeDisableDeepCopy,
-				client.DisableReadYourWritesConsistency,
 			); err != nil {
 				logger.Error(err, "failed to list ChangeTransferPolicies for CommitStatus SHA", "field", field, "sha", sha)
 				continue

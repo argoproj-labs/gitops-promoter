@@ -43,10 +43,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/workqueue"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 //go:embed testdata/ChangeTransferPolicy.yaml
@@ -3205,6 +3207,86 @@ var _ = Describe("commitStatusPhaseChangedPredicate", func() {
 		cs := commitStatus("abc", promoterv1alpha1.CommitPhaseSuccess, "k", "")
 		Expect(p.Delete(event.DeleteEvent{Object: cs})).To(BeTrue())
 		Expect(p.Generic(event.GenericEvent{Object: cs})).To(BeFalse())
+	})
+})
+
+// A ChangeTransferPolicy records a new hydrated SHA only when its reconcile ends, and the SHA index the
+// CommitStatus watch maps through is read from the cache. A CommitStatus change for that SHA can
+// therefore arrive while the index still has the policy on its previous SHA, and map to nothing. This
+// replays that order of events deterministically: the CommitStatus change first, then the policy's
+// status write recording the new SHA. At least one of the two events must wake the policy; otherwise
+// it keeps the phase it read before the change until its periodic requeue.
+var _ = Describe("CommitStatus change while the policy's new hydrated SHA is not yet indexed", func() {
+	It("still wakes the policy", func() {
+		ctx := context.Background()
+		scheme := runtime.NewScheme()
+		Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
+
+		before := &promoterv1alpha1.ChangeTransferPolicy{}
+		before.Namespace = "default"
+		before.Name = "policy"
+		before.Generation = 1
+		before.Status.Active.Hydrated.Sha = "active-sha"
+		before.Status.Proposed.Hydrated.Sha = "old-proposed-sha"
+
+		c := ctrlfake.NewClientBuilder().WithScheme(scheme).
+			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, ctpActiveHydratedShaIndex, func(o ctrlclient.Object) []string {
+				return []string{o.(*promoterv1alpha1.ChangeTransferPolicy).Status.Active.Hydrated.Sha} //nolint:forcetypeassert // test index
+			}).
+			WithIndex(&promoterv1alpha1.ChangeTransferPolicy{}, ctpProposedHydratedShaIndex, func(o ctrlclient.Object) []string {
+				return []string{o.(*promoterv1alpha1.ChangeTransferPolicy).Status.Proposed.Hydrated.Sha} //nolint:forcetypeassert // test index
+			}).
+			WithObjects(before).Build()
+		queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+		defer queue.ShutDown()
+
+		By("Failing the CommitStatus for the new proposed SHA before the policy's status records it")
+		oldCS := &promoterv1alpha1.CommitStatus{Spec: promoterv1alpha1.CommitStatusSpec{Sha: "new-proposed-sha", Phase: promoterv1alpha1.CommitPhaseSuccess}}
+		newCS := oldCS.DeepCopy()
+		newCS.Spec.Phase = promoterv1alpha1.CommitPhaseFailure
+		update := event.UpdateEvent{ObjectOld: oldCS, ObjectNew: newCS}
+		Expect(commitStatusPhaseChangedPredicate().Update(update)).To(BeTrue())
+		enqueueChangeTransferPoliciesForCommitStatus(c).Update(ctx, update, queue)
+		wokenByCommitStatus := queue.Len() > 0
+
+		By("Writing the policy's status with the new proposed SHA")
+		after := before.DeepCopy()
+		after.Status.Proposed.Hydrated.Sha = "new-proposed-sha"
+		wokenByOwnStatus := changeTransferPolicyPredicate().Update(event.UpdateEvent{ObjectOld: before, ObjectNew: after})
+
+		Expect(wokenByCommitStatus || wokenByOwnStatus).To(BeTrue(),
+			"neither the CommitStatus change nor the policy recording the new SHA woke the policy")
+	})
+})
+
+var _ = Describe("hydratedShaChangedPredicate", func() {
+	p := hydratedShaChangedPredicate()
+
+	policy := func(activeSha, proposedSha, prState string) *promoterv1alpha1.ChangeTransferPolicy {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+		ctp.Status.Active.Hydrated.Sha = activeSha
+		ctp.Status.Proposed.Hydrated.Sha = proposedSha
+		if prState != "" {
+			ctp.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{State: promoterv1alpha1.PullRequestState(prState)}
+		}
+		return ctp
+	}
+
+	DescribeTable("passes only updates that change a recorded hydrated SHA",
+		func(oldCTP, newCTP *promoterv1alpha1.ChangeTransferPolicy, want bool) {
+			Expect(p.Update(event.UpdateEvent{ObjectOld: oldCTP, ObjectNew: newCTP})).To(Equal(want))
+		},
+		Entry("proposed SHA changed", policy("a", "p1", ""), policy("a", "p2", ""), true),
+		Entry("active SHA changed", policy("a1", "p", ""), policy("a2", "p", ""), true),
+		Entry("other status changed, so the follow-up reconcile does not pass again",
+			policy("a", "p", "open"), policy("a", "p", "merged"), false),
+	)
+
+	It("ignores creates, deletes, and generic events", func() {
+		ctp := policy("a", "p", "")
+		Expect(p.Create(event.CreateEvent{Object: ctp})).To(BeFalse())
+		Expect(p.Delete(event.DeleteEvent{Object: ctp})).To(BeFalse())
+		Expect(p.Generic(event.GenericEvent{Object: ctp})).To(BeFalse())
 	})
 })
 
