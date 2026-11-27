@@ -18,7 +18,10 @@ package webrequest
 
 import (
 	"context"
+	"fmt"
+	"sync"
 
+	"github.com/expr-lang/expr/vm"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -351,6 +354,32 @@ var _ = Describe("ExpressionEvaluator", func() {
 			Expect(hit).To(BeFalse())
 			_, hit = lim.cache.get(expressionCacheKey{Prefix: "trigger", Expression: "false"})
 			Expect(hit).To(BeTrue())
+		})
+
+		It("is safe for concurrent get and put (run with -race)", func() {
+			// lru.Get moves the entry to the front of its list, so concurrent gets must not share a read lock.
+			c := newCompileCache(8)
+			keys := make([]expressionCacheKey, 4)
+			for i := range keys {
+				keys[i] = expressionCacheKey{Prefix: "trigger", Expression: fmt.Sprintf("%d == %d", i, i)}
+				c.put(keys[i], &vm.Program{})
+			}
+			var wg sync.WaitGroup
+			for g := range 8 {
+				wg.Go(func() {
+					defer GinkgoRecover()
+					for i := range 200 {
+						key := keys[(g+i)%len(keys)]
+						if i%10 == 0 {
+							c.put(key, &vm.Program{})
+							continue
+						}
+						_, hit := c.get(key)
+						Expect(hit).To(BeTrue())
+					}
+				})
+			}
+			wg.Wait()
 		})
 	})
 })
