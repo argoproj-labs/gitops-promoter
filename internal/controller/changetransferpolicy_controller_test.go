@@ -4165,6 +4165,90 @@ var _ = Describe("writePromotionHistoryNote merge commit snapshot mismatch", fun
 	})
 })
 
+var _ = Describe("gitMergeStrategyOurs conflict resolution event", func() {
+	var workDir string
+	var bareDir string
+
+	const (
+		activeBranch   = "env-active"
+		proposedBranch = "env-proposed"
+	)
+
+	mustRunGit := func(dir string, args ...string) string {
+		GinkgoHelper()
+		out, err := runGitCmd(ctx, dir, args...)
+		Expect(err).NotTo(HaveOccurred())
+		return strings.TrimSpace(out)
+	}
+
+	AfterEach(func() {
+		_ = os.RemoveAll(bareDir)
+		_ = os.RemoveAll(workDir)
+	})
+
+	It("reports that the active branch was merged into the proposed branch", func() {
+		var err error
+		bareDir, err = os.MkdirTemp("", "ours-event-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(bareDir, "init", "--bare")
+
+		workDir, err = os.MkdirTemp("", "ours-event-work-*")
+		Expect(err).NotTo(HaveOccurred())
+		mustRunGit(workDir, "clone", bareDir, ".")
+		mustRunGit(workDir, "config", "user.name", "Test User")
+		mustRunGit(workDir, "config", "user.email", "test@example.com")
+		mustRunGit(workDir, "config", "commit.gpgsign", "false")
+
+		Expect(os.WriteFile(path.Join(workDir, "manifest.yaml"), []byte("base\n"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "add", "-A")
+		mustRunGit(workDir, "commit", "-m", "base")
+		defaultBranch := mustRunGit(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+
+		// Both branches change the same line, so merging them conflicts.
+		mustRunGit(workDir, "checkout", "-B", activeBranch, defaultBranch)
+		Expect(os.WriteFile(path.Join(workDir, "manifest.yaml"), []byte("active\n"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "commit", "-am", "active change")
+		activeSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", activeBranch)
+
+		mustRunGit(workDir, "checkout", "-B", proposedBranch, defaultBranch)
+		Expect(os.WriteFile(path.Join(workDir, "manifest.yaml"), []byte("proposed\n"), 0o644)).To(Succeed())
+		mustRunGit(workDir, "commit", "-am", "proposed change")
+		proposedSha := mustRunGit(workDir, "rev-parse", "HEAD")
+		mustRunGit(workDir, "push", "-u", "origin", proposedBranch)
+
+		gitRepo := &promoterv1alpha1.GitRepository{
+			Name: "ours-event-repo", Namespace: "default",
+			Spec: promoterv1alpha1.GitRepositorySpec{
+				Fake: &promoterv1alpha1.FakeRepo{Owner: "test-owner", Name: "ours-event-repo"},
+			},
+		}
+		gitOps := git.NewEnvironmentOperations(gitRepo, &localGitProvider{repoPath: bareDir}, "default/ours-event-"+proposedSha)
+		Expect(gitOps.CloneRepo(ctx)).To(Succeed())
+		Expect(gitOps.FetchBranch(ctx, activeBranch)).To(Succeed())
+		Expect(gitOps.FetchBranch(ctx, proposedBranch)).To(Succeed())
+
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ActiveBranch:   activeBranch,
+				ProposedBranch: proposedBranch,
+			},
+		}
+		ctp.Status.Active.Hydrated.Sha = activeSha
+		ctp.Status.Proposed.Hydrated.Sha = proposedSha
+
+		recorder := events.NewFakeRecorder(10)
+		r := &ChangeTransferPolicyReconciler{Recorder: recorder}
+
+		merged, err := r.gitMergeStrategyOurs(ctx, gitOps, ctp)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(merged).To(BeTrue())
+
+		expected := fmt.Sprintf(constants.ResolvedConflictMessage, activeBranch, proposedBranch)
+		Eventually(recorder.Events).Should(Receive(ContainSubstring(expected)))
+	})
+})
+
 var _ = Describe("handlePRFinalizerRemoval early promotion history note", func() {
 	var workDir string
 	var bareDir string
