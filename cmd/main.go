@@ -242,7 +242,10 @@ func runController(
 	// Create the provider first, then the manager with the provider
 	provider := kubeconfigprovider.New(providerOpts)
 
-	restConfig := ctrl.GetConfigOrDie()
+	restConfig, err := controllerRESTConfig(clientConfig)
+	if err != nil {
+		return fmt.Errorf("failed to get client config: %w", err)
+	}
 	processSignalsCtx := ctrl.SetupSignalHandler()
 
 	if err := settings.BootstrapControllerInstanceID(processSignalsCtx, restConfig, controllerNamespace); err != nil {
@@ -821,6 +824,22 @@ func addKubectlFlags(flags *pflag.FlagSet) clientcmd.ClientConfig {
 	flags.StringVar(&loadingRules.ExplicitPath, "kubeconfig", "", "Path to a kube config. Only required if out-of-cluster")
 	clientcmd.BindOverrideFlags(&overrides, flags, kflags)
 	return clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, &overrides, os.Stdin)
+}
+
+// controllerRESTConfig returns the REST config the controller uses to reach the Kubernetes API.
+// It resolves the config from the kubectl-style flags (--kubeconfig, --context, ...) so the API
+// connection matches the namespace taken from the same clientConfig. When no kubeconfig is found,
+// clientcmd's deferred loader falls back to the in-cluster config.
+func controllerRESTConfig(clientConfig clientcmd.ClientConfig) (*rest.Config, error) {
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
+	}
+	if restConfig.QPS == 0 {
+		// Match ctrl.GetConfig: disable the client-side rate limiter and rely on API priority and fairness.
+		restConfig.QPS = -1
+	}
+	return restConfig, nil
 }
 
 func ignoreCanceled(err error) error {
