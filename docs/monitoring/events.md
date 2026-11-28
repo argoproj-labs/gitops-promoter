@@ -96,6 +96,18 @@ failure; the up-to-date failure message stays visible on the resource's Ready co
 | Warning    | CommitStatusesNotReady   | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this WebRequestCommitStatus is not Ready. |
 | Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., environment removed). |
 
+## KubernetesResourceCommitStatus
+
+Events emitted by the [KubernetesResourceCommitStatus](../gating-promotions/built-in-gates/kubernetes-resource-commit-status.md) controller.
+
+| Event Type | Event Reason             | Description                                                                                                                   |
+|------------|--------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| Normal     | KubernetesResourceCreated | The real resource (for example a `batch/v1 Job`) was created from the template for an environment and SHA.                   |
+| Normal     | KubernetesResourcePruned | A created resource was deleted because it exceeded `spec.lifecycle.historyLimit` or its environment is no longer gated.       |
+| Normal/Warning | CommitStatusPhaseChanged | The phase expression result changed for an environment. Warning when the new phase is `failure`.                         |
+| Warning    | CommitStatusesNotReady   | One or more of the [CommitStatus](../crd-specs.md#commitstatus) resources managed by this KubernetesResourceCommitStatus is not Ready. |
+| Normal     | OrphanedCommitStatusDeleted | An orphaned [CommitStatus](../crd-specs.md#commitstatus) was deleted after it no longer applied (e.g., environment removed). |
+
 ## CommitStatus
 
 [CommitStatuses](../crd-specs.md#commitstatus) may produce the following events:

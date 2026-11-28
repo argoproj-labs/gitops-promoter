@@ -199,6 +199,18 @@ A WebRequestCommitStatus gates promotions on external HTTP/HTTPS API validation.
 {!internal/controller/testdata/WebRequestCommitStatus.yaml!}
 ```
 
+### KubernetesResourceCommitStatus
+
+A KubernetesResourceCommitStatus creates a real Kubernetes resource (for example a `batch/v1 Job`) per environment from a
+template object and evaluates an expr expression against the live resource to compute the commit status phase. Template
+kinds are generated from `ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources`. See
+[Kubernetes Resource Commit Status](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md) for the template
+kinds, template variables, lifecycle modes, RBAC, and examples.
+
+```yaml
+{!internal/controller/testdata/KubernetesResourceCommitStatus.yaml!}
+```
+
 ### ControllerConfiguration
 
 A ControllerConfiguration is used to configure the behavior of the promoter.

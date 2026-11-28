@@ -1,0 +1,111 @@
+{
+  "openapi": "3.0.0",
+  "info": {"title": "Kubernetes", "version": "unversioned"},
+  "paths": {},
+  "components": {
+    "schemas": {
+      "io.k8s.api.batch.v1.Job": {
+        "description": "Job represents the configuration of a single job.",
+        "type": "object",
+        "properties": {
+          "apiVersion": {"type": "string", "description": "APIVersion"},
+          "kind": {"type": "string", "description": "Kind"},
+          "metadata": {
+            "allOf": [{"$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta"}],
+            "default": {},
+            "description": "Standard object's metadata."
+          },
+          "spec": {
+            "allOf": [{"$ref": "#/components/schemas/io.k8s.api.batch.v1.JobSpec"}],
+            "default": {},
+            "description": "Specification of the desired behavior of a job."
+          },
+          "status": {
+            "allOf": [{"$ref": "#/components/schemas/io.k8s.api.batch.v1.JobStatus"}],
+            "default": {},
+            "description": "Current status of a job."
+          }
+        },
+        "x-kubernetes-group-version-kind": [{"group": "batch", "kind": "Job", "version": "v1"}]
+      },
+      "io.k8s.api.batch.v1.JobList": {
+        "type": "object",
+        "properties": {"items": {"type": "array", "items": {"allOf": [{"$ref": "#/components/schemas/io.k8s.api.batch.v1.Job"}], "default": {}}}},
+        "x-kubernetes-group-version-kind": [{"group": "batch", "kind": "JobList", "version": "v1"}]
+      },
+      "io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "labels": {"type": "object", "additionalProperties": {"type": "string", "default": ""}}
+        }
+      },
+      "io.k8s.api.batch.v1.JobSpec": {
+        "type": "object",
+        "required": ["template"],
+        "properties": {
+          "parallelism": {"type": "integer", "format": "int32", "description": "Specifies the maximum desired number of pods."},
+          "template": {
+            "allOf": [{"$ref": "#/components/schemas/io.k8s.api.core.v1.PodTemplateSpec"}],
+            "default": {}
+          },
+          "ports": {
+            "type": "array",
+            "items": {"allOf": [{"$ref": "#/components/schemas/io.k8s.api.core.v1.ContainerPort"}], "default": {}},
+            "x-kubernetes-list-map-keys": ["containerPort", "protocol"],
+            "x-kubernetes-list-type": "map",
+            "x-kubernetes-patch-merge-key": "containerPort",
+            "x-kubernetes-patch-strategy": "merge"
+          },
+          "maxUnavailable": {"allOf": [{"$ref": "#/components/schemas/io.k8s.apimachinery.pkg.util.intstr.IntOrString"}]},
+          "resources": {
+            "type": "object",
+            "additionalProperties": {"allOf": [{"$ref": "#/components/schemas/io.k8s.apimachinery.pkg.api.resource.Quantity"}]}
+          },
+          "startTime": {"allOf": [{"$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.Time"}]},
+          "tree": {"allOf": [{"$ref": "#/components/schemas/example.Node"}]},
+          "selector": {"allOf": [{"$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector"}], "x-kubernetes-map-type": "atomic"}
+        }
+      },
+      "io.k8s.api.core.v1.PodTemplateSpec": {
+        "type": "object",
+        "properties": {
+          "metadata": {"allOf": [{"$ref": "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta"}], "default": {}},
+          "spec": {"type": "object", "properties": {"restartPolicy": {"type": "string", "enum": ["Always", "Never"]}}}
+        }
+      },
+      "io.k8s.api.core.v1.ContainerPort": {
+        "type": "object",
+        "required": ["containerPort"],
+        "properties": {
+          "containerPort": {"type": "integer", "format": "int32", "default": 0},
+          "protocol": {"type": "string", "default": "TCP"}
+        }
+      },
+      "io.k8s.apimachinery.pkg.util.intstr.IntOrString": {
+        "format": "int-or-string",
+        "oneOf": [{"type": "integer"}, {"type": "string"}]
+      },
+      "io.k8s.apimachinery.pkg.api.resource.Quantity": {
+        "oneOf": [{"type": "string"}, {"type": "number"}]
+      },
+      "io.k8s.apimachinery.pkg.apis.meta.v1.Time": {"type": "string", "format": "date-time"},
+      "io.k8s.apimachinery.pkg.apis.meta.v1.LabelSelector": {
+        "type": "object",
+        "properties": {"matchLabels": {"type": "object", "additionalProperties": {"type": "string", "default": ""}}},
+        "x-kubernetes-map-type": "atomic"
+      },
+      "example.Node": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "children": {"type": "array", "items": {"allOf": [{"$ref": "#/components/schemas/example.Node"}]}}
+        }
+      },
+      "io.k8s.api.batch.v1.JobStatus": {
+        "type": "object",
+        "properties": {"active": {"type": "integer", "format": "int32"}}
+      }
+    }
+  }
+}

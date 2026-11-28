@@ -17,62 +17,19 @@ limitations under the License.
 package webrequest
 
 import (
-	"sync"
-
-	"github.com/expr-lang/expr/vm"
-	"github.com/golang/groupcache/lru"
+	"github.com/argoproj-labs/gitops-promoter/internal/exprcache"
 )
 
 // maxCompiledExpressionCacheEntries bounds the compile cache so unique expressions from many resources
 // (e.g. churned or auto-generated WRCS) cannot grow memory without bound. Least-recently-used programs
 // are evicted when over this limit.
-const maxCompiledExpressionCacheEntries = 4096
-
-// compileCache is an LRU of compiled programs (github.com/golang/groupcache/lru) keyed by
-// (prefix, expression). The upstream lru.Cache is not safe for concurrent use; a mutex serializes get/put.
-type compileCache struct {
-	lru *lru.Cache
-	mu  sync.RWMutex
-}
-
-func newCompileCache(maxEntries int) *compileCache {
-	if maxEntries < 1 {
-		maxEntries = maxCompiledExpressionCacheEntries
-	}
-	return &compileCache{
-		lru: lru.New(maxEntries),
-	}
-}
-
-func (c *compileCache) get(key expressionCacheKey) (*vm.Program, bool) {
-	// lru.Get mutates recency state, so it requires exclusive lock.
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	v, ok := c.lru.Get(key)
-	if !ok {
-		return nil, false
-	}
-	program, ok := v.(*vm.Program)
-	if !ok {
-		return nil, false
-	}
-	return program, true
-}
-
-func (c *compileCache) put(key expressionCacheKey, program *vm.Program) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.lru.Add(key, program)
-}
+const maxCompiledExpressionCacheEntries = exprcache.DefaultMaxEntries
 
 // expressionCacheKey identifies a compiled expression in the cache. Prefix distinguishes entries so the same
 // source expression compiled with different options (e.g. trigger vs validation) stays separate.
-type expressionCacheKey struct {
-	Prefix     string
-	Expression string
-}
+type expressionCacheKey = exprcache.Key
 
 // newExpressionEvaluatorWithCompileCacheMax returns an evaluator whose compile LRU capacity is maxEntries (tests).
 func newExpressionEvaluatorWithCompileCacheMax(maxEntries int) *ExpressionEvaluator {
-	return &ExpressionEvaluator{cache: newCompileCache(maxEntries)}
+	return &ExpressionEvaluator{cache: exprcache.New(maxEntries)}
 }

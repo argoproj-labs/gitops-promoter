@@ -23,6 +23,7 @@ rules:
       - timedcommitstatuses
       - webrequestcommitstatuses
       - scheduledcommitstatuses
+      - kubernetesresourcecommitstatuses
       - dependentssuccessfulcommitstatuses
       - gitrepositories
       - scmproviders
