@@ -126,6 +126,7 @@ promoter_crds = [
     'changetransferpolicies.promoter.argoproj.io',
     'clusterscmproviders.promoter.argoproj.io',
     'commitstatuses.promoter.argoproj.io',
+    'commitvalidations.promoter.argoproj.io',
     'controllerconfigurations.promoter.argoproj.io',
     'dependentssuccessfulcommitstatuses.promoter.argoproj.io',
     'gitcommitstatuses.promoter.argoproj.io',
@@ -136,6 +137,7 @@ promoter_crds = [
     'scheduledcommitstatuses.promoter.argoproj.io',
     'scmproviders.promoter.argoproj.io',
     'timedcommitstatuses.promoter.argoproj.io',
+    'validatedcommitstatuses.promoter.argoproj.io',
     'webrequestcommitstatuses.promoter.argoproj.io',
 ]
 
@@ -203,6 +205,12 @@ k8s_resource(
         'promoter-dependentssuccessfulcommitstatus-admin-role:clusterrole',
         'promoter-dependentssuccessfulcommitstatus-editor-role:clusterrole',
         'promoter-dependentssuccessfulcommitstatus-viewer-role:clusterrole',
+        'promoter-validatedcommitstatus-admin-role:clusterrole',
+        'promoter-validatedcommitstatus-editor-role:clusterrole',
+        'promoter-validatedcommitstatus-viewer-role:clusterrole',
+        'promoter-commitvalidation-admin-role:clusterrole',
+        'promoter-commitvalidation-editor-role:clusterrole',
+        'promoter-commitvalidation-viewer-role:clusterrole',
         'promoter-metrics-reader:clusterrole',
         'promoter-proxy-role:clusterrole',
         'promoter-timedcommitstatus-admin-role:clusterrole',

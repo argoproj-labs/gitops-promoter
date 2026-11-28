@@ -105,6 +105,9 @@ var (
 	webhookReceiverPort int
 	scheme              = utils.GetScheme()
 	enqueueCTP          CTPEnqueueFunc // Function to enqueue CTP reconciliation requests
+	// enqueueValidatedCommitStatus triggers a ValidatedCommitStatus reconcile, standing in for the
+	// polling that picks up validation notes: SCMs send no webhook when a note is pushed.
+	enqueueValidatedCommitStatus ValidatedCommitStatusEnqueueFunc
 	// settingsMgr is the manager the suite's reconcilers use. It reads
 	// ControllerConfiguration from the informer cache, not the API.
 	settingsMgr *settings.Manager
@@ -349,8 +352,35 @@ var _ = SynchronizedBeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	validatedCommitStatusReconciler := &ValidatedCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		APIReader:   k8sManager.GetAPIReader(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("ValidatedCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+		// Shortened from the production defaults (15s and 1m) so that specs waiting for something no
+		// event announces do not each wait that long: a hydrator note being picked up, an environment
+		// becoming idle, a tag push being retried.
+		pollInterval:  2 * time.Second,
+		retryInterval: 2 * time.Second,
+	}
+	err = validatedCommitStatusReconciler.SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+	enqueueValidatedCommitStatus = validatedCommitStatusReconciler.GetEnqueueFunc()
+
+	err = (&CommitValidationReconciler{
+		Client:                       k8sManager.GetClient(),
+		Scheme:                       k8sManager.GetScheme(),
+		Recorder:                     k8sManager.GetEventRecorder("CommitValidation"),
+		SettingsMgr:                  settingsMgr,
+		EnqueueValidatedCommitStatus: validatedCommitStatusReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
-	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
+	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()),
+		webhookreceiver.WithValidatedCommitStatusEnqueue(webhookreceiver.EnqueueFunc(validatedCommitStatusReconciler.GetEnqueueFunc())))
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
@@ -931,11 +961,17 @@ func buildGitHubWebhookPayload(beforeSha, ref string) string {
 // When the suite targets scmserver, the server already delivers real provider-shaped push
 // webhooks on git-receive-pack, so this is a no-op.
 func sendWebhookForPush(ctx context.Context, sha, branch string) {
+	sendWebhookForRef(ctx, sha, "refs/heads/"+branch)
+}
+
+// sendWebhookForRef is sendWebhookForPush for any ref, such as a tag. sha is what the ref pointed at
+// before the push.
+func sendWebhookForRef(ctx context.Context, sha, ref string) {
 	if scmTarget.sendsOwnWebhooks() {
 		return
 	}
 	// Build GitHub-style webhook payload
-	payload := buildGitHubWebhookPayload(sha, "refs/heads/"+branch)
+	payload := buildGitHubWebhookPayload(sha, ref)
 
 	// Send the webhook request
 	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)

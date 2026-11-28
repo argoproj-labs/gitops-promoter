@@ -46,6 +46,8 @@ func (m *Manager) GetInstanceID(ctx context.Context) (*string, error) {
 //   - GitCommitStatusConfiguration
 //   - WebRequestCommitStatusConfiguration
 //   - DependentsSuccessfulCommitStatusConfiguration
+//   - ValidatedCommitStatusConfiguration
+//   - CommitValidationConfiguration
 //   - ScheduledCommitStatusConfiguration
 //   - RestoreActiveCommitConfiguration
 type ControllerConfigurationTypes interface {
@@ -59,6 +61,8 @@ type ControllerConfigurationTypes interface {
 		promoterv1alpha1.GitCommitStatusConfiguration |
 		promoterv1alpha1.WebRequestCommitStatusConfiguration |
 		promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration |
+		promoterv1alpha1.ValidatedCommitStatusConfiguration |
+		promoterv1alpha1.CommitValidationConfiguration |
 		promoterv1alpha1.ScheduledCommitStatusConfiguration |
 		promoterv1alpha1.RestoreActiveCommitConfiguration
 }
@@ -359,6 +363,10 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 		src = &config.Spec.WebRequestCommitStatus.WorkQueue
 	case promoterv1alpha1.DependentsSuccessfulCommitStatusConfiguration:
 		src = &config.Spec.DependentsSuccessfulCommitStatus.WorkQueue
+	case promoterv1alpha1.ValidatedCommitStatusConfiguration:
+		src = &config.Spec.ValidatedCommitStatus.WorkQueue
+	case promoterv1alpha1.CommitValidationConfiguration:
+		src = &config.Spec.CommitValidation.WorkQueue
 	case promoterv1alpha1.ScheduledCommitStatusConfiguration:
 		src = &config.Spec.ScheduledCommitStatus.WorkQueue
 	case promoterv1alpha1.RestoreActiveCommitConfiguration:
