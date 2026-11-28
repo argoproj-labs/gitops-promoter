@@ -2,6 +2,55 @@
 
 This page documents breaking changes and migration steps between releases.
 
+## 0.51 — Validating admission webhook
+
+The installation manifests add a validating admission webhook for KubernetesResourceCommitStatus. The controller
+serves it on port 9443 behind the `promoter-webhook-service` Service and manages its certificate itself, so no
+cert-manager is needed. The manifests add:
+
+- `promoter-validating-webhook-configuration` (ValidatingWebhookConfiguration, `failurePolicy: Fail`),
+- the `promoter-webhook-server-cert` Secret, mounted into the controller pod, which the controller fills and rotates,
+- a Role allowing the controller to update that Secret, and a ClusterRole allowing it to inject the CA into the
+  webhook configuration (also in the namespaced installation, because webhook configurations are cluster-scoped).
+
+KubernetesResourceCommitStatus creates and updates fail while no controller replica is ready, including for up to a
+minute after the first install while the kubelet syncs the generated certificate. If you deploy the controller with
+your own manifests, add the objects above and the Secret volume, or run it with `--admission-webhook=false`;
+templates are then validated at reconcile only. See
+[Template validation](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md#template-validation).
+
+The shipped manifests leave the Secret's `.data` and the webhook configuration's `caBundle` empty. The controller owns
+both under the field manager `promoter-webhook-cert-rotator`, so a client-side or server-side apply leaves the
+generated values in place. A sync with `Replace=true` clears them; the controller watches both objects and writes them
+again, generating a new certificate if the Secret was cleared.
+
+## 0.51 — KubernetesResourceCommitStatus configuration section
+
+`ControllerConfiguration.spec.kubernetesResourceCommitStatus` is a new required section (like every other controller
+section). The installation manifests include it with the standard work-queue defaults and an empty `resources` list.
+If you maintain your own ControllerConfiguration, add:
+
+```yaml
+spec:
+  kubernetesResourceCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+    resources: []
+```
+
+RBAC for the kinds you list is not generated; see
+[Kubernetes Resource Commit Status](gating-promotions/built-in-gates/kubernetes-resource-commit-status.md#rbac).
+
 ## 0.51 — WebRequestCommitStatus request metadata moves under `lastRequest`
 
 `lastRequestTime` and `lastResponseStatusCode` are removed from `status.environments[]` and from

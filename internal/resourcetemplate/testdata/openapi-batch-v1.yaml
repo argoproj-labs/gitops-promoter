@@ -1,0 +1,130 @@
+# Trimmed from the batch/v1 OpenAPI v3 document a Kubernetes 1.37 API server publishes: the same shapes
+# ($ref through single-element allOf, int-or-string and Quantity oneOf, enums, free-form maps) on fewer fields.
+openapi: 3.0.0
+info:
+  title: Kubernetes
+  version: v1.37.0
+paths: {}
+components:
+  schemas:
+    io.k8s.api.batch.v1.Job:
+      type: object
+      x-kubernetes-group-version-kind:
+        - group: batch
+          version: v1
+          kind: Job
+      properties:
+        apiVersion: {type: string}
+        kind: {type: string}
+        metadata:
+          allOf: [{$ref: "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta"}]
+          default: {}
+        spec:
+          allOf: [{$ref: "#/components/schemas/io.k8s.api.batch.v1.JobSpec"}]
+          default: {}
+        status:
+          allOf: [{$ref: "#/components/schemas/io.k8s.api.batch.v1.JobStatus"}]
+    io.k8s.api.batch.v1.JobSpec:
+      type: object
+      required: [template]
+      properties:
+        backoffLimit: {type: integer, format: int32}
+        parallelism: {type: integer, format: int32}
+        suspend: {type: boolean}
+        completionMode:
+          type: string
+          enum: [Indexed, NonIndexed]
+        template:
+          allOf: [{$ref: "#/components/schemas/io.k8s.api.core.v1.PodTemplateSpec"}]
+          default: {}
+    io.k8s.api.batch.v1.JobStatus:
+      type: object
+      properties:
+        succeeded: {type: integer, format: int32}
+    io.k8s.api.core.v1.PodTemplateSpec:
+      type: object
+      properties:
+        metadata:
+          allOf: [{$ref: "#/components/schemas/io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta"}]
+          default: {}
+        spec:
+          allOf: [{$ref: "#/components/schemas/io.k8s.api.core.v1.PodSpec"}]
+          default: {}
+    io.k8s.api.core.v1.PodSpec:
+      type: object
+      required: [containers]
+      properties:
+        restartPolicy:
+          type: string
+          enum: [Always, Never, OnFailure]
+        nodeSelector:
+          type: object
+          additionalProperties: {type: string, default: ""}
+        containers:
+          type: array
+          items:
+            allOf: [{$ref: "#/components/schemas/io.k8s.api.core.v1.Container"}]
+            default: {}
+    io.k8s.api.core.v1.Container:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, default: ""}
+        image: {type: string}
+        args:
+          type: array
+          items: {type: string, default: ""}
+        ports:
+          type: array
+          items:
+            allOf: [{$ref: "#/components/schemas/io.k8s.api.core.v1.ContainerPort"}]
+            default: {}
+        resources:
+          allOf: [{$ref: "#/components/schemas/io.k8s.api.core.v1.ResourceRequirements"}]
+          default: {}
+        readinessProbe:
+          allOf: [{$ref: "#/components/schemas/io.k8s.api.core.v1.Probe"}]
+    io.k8s.api.core.v1.ContainerPort:
+      type: object
+      required: [containerPort]
+      properties:
+        containerPort: {type: integer, format: int32, default: 0}
+        protocol:
+          type: string
+          enum: [SCTP, TCP, UDP]
+    io.k8s.api.core.v1.ResourceRequirements:
+      type: object
+      properties:
+        limits:
+          type: object
+          additionalProperties:
+            allOf: [{$ref: "#/components/schemas/io.k8s.apimachinery.pkg.api.resource.Quantity"}]
+    io.k8s.api.core.v1.Probe:
+      type: object
+      properties:
+        httpGet:
+          allOf: [{$ref: "#/components/schemas/io.k8s.api.core.v1.HTTPGetAction"}]
+    io.k8s.api.core.v1.HTTPGetAction:
+      type: object
+      required: [port]
+      properties:
+        path: {type: string}
+        port:
+          allOf: [{$ref: "#/components/schemas/io.k8s.apimachinery.pkg.util.intstr.IntOrString"}]
+    io.k8s.apimachinery.pkg.api.resource.Quantity:
+      oneOf: [{type: string}, {type: number}]
+    io.k8s.apimachinery.pkg.util.intstr.IntOrString:
+      format: int-or-string
+      oneOf: [{type: integer}, {type: string}]
+    io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta:
+      type: object
+      properties:
+        name: {type: string}
+        namespace: {type: string}
+        generateName: {type: string}
+        labels:
+          type: object
+          additionalProperties: {type: string, default: ""}
+        annotations:
+          type: object
+          additionalProperties: {type: string, default: ""}

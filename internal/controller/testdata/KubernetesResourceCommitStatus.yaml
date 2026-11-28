@@ -1,0 +1,43 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: KubernetesResourceCommitStatus
+metadata:
+  name: smoke-test
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: demo
+  # Matched against PromotionStrategy proposedCommitStatuses / activeCommitStatuses.
+  key: smoke-test
+  # proposed (default) creates the resource for the proposed hydrated SHA; active uses the live SHA.
+  reportOn: proposed
+  # The object created per environment. Its kind must be listed in
+  # ControllerConfiguration.spec.kubernetesResourceCommitStatus.resources (here batch/v1 Job).
+  # String values may contain ${ } expr expressions; a value that is exactly one expression keeps its type.
+  template:
+    apiVersion: batch/v1
+    kind: Job
+    spec:
+      ttlSecondsAfterFinished: 3600
+      backoffLimit: 0
+      suspend: ${ Branch == 'environment/production' }
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: test
+              image: ghcr.io/acme/smoke:latest
+              args: ["--sha", "${ Sha }", "--env", "${ Branch }"]
+  lifecycle:
+    # PerSha (default) creates one resource per SHA; InPlace re-applies a single resource per environment.
+    mode: PerSha
+    # Resources kept per environment, including the current one.
+    historyLimit: 1
+  phase:
+    # expr evaluated against the live resource. Guard optional fields with ?. and ??.
+    expression: |
+      any(Resource.status?.conditions ?? [], {.type == 'Complete' && .status == 'True'})
+        ? {phase: 'success'}
+        : any(Resource.status?.conditions ?? [], {.type == 'Failed' && .status == 'True'})
+          ? {phase: 'failure', description: 'Smoke test is failing'}
+          : false
+  description: "Smoke test ${ ResourceName } is ${ Phase }"
