@@ -182,8 +182,8 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+test: manifests generate fmt vet envtest ## Run tests with the race detector.
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -race $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
@@ -193,13 +193,24 @@ test-e2e:
 .PHONY: test-deps
 test-deps: ginkgo manifests generate fmt vet envtest
 
+# The Ginkgo test targets run with the race detector. Specs spawn git subprocesses that inherit the test
+# processes' stdout and stderr, which can hang Ginkgo's output interceptor; under -race it hangs reliably, so the
+# interceptor is off. A race report a test process prints outside a spec then never reaches Ginkgo, so each run
+# has the race detector write its reports to a fresh .race-logs.* directory, and hack/check-race-logs.sh prints
+# them and fails the target.
+GINKGO_RACE_FLAGS ?= -race --output-interceptor-mode=none
+
 .PHONY: test-parallel
-test-parallel: test-deps ## Run tests in parallel
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/ webrequestsimulator/ test/scmserver/
+test-parallel: test-deps ## Run tests in parallel with the race detector
+	race_dir=$$(mktemp -d "$(CURDIR)/.race-logs.XXXXXX"); \
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" GORACE="log_path=$$race_dir/race" go tool ginkgo $(GINKGO_RACE_FLAGS) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml internal/ webrequestsimulator/ test/scmserver/; \
+	status=$$?; ./hack/check-race-logs.sh "$$race_dir" || status=1; exit $$status
 
 .PHONY: test-parallel-repeat3
-test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go tool ginkgo -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/ webrequestsimulator/ test/scmserver/
+test-parallel-repeat3: test-deps ## Run tests in parallel 3 times with the race detector to check for flakiness --repeat does not count the first run
+	race_dir=$$(mktemp -d "$(CURDIR)/.race-logs.XXXXXX"); \
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" GORACE="log_path=$$race_dir/race" go tool ginkgo $(GINKGO_RACE_FLAGS) -p -procs=4 -r -v -cover -coverprofile=cover.out -coverpkg=./... --junit-report=junit.xml --repeat=2 internal/ webrequestsimulator/ test/scmserver/; \
+	status=$$?; ./hack/check-race-logs.sh "$$race_dir" || status=1; exit $$status
 
 # Run controller integration tests against an externally running scmserver provider.
 # Requires `make run-scm-server` in another terminal (or `make start-scm-server`). The weekly
