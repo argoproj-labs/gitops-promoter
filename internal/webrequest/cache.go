@@ -32,7 +32,7 @@ const maxCompiledExpressionCacheEntries = 4096
 // (prefix, expression). The upstream lru.Cache is not safe for concurrent use; a mutex serializes get/put.
 type compileCache struct {
 	lru *lru.Cache
-	mu  sync.RWMutex
+	mu  sync.Mutex
 }
 
 func newCompileCache(maxEntries int) *compileCache {
@@ -46,8 +46,8 @@ func newCompileCache(maxEntries int) *compileCache {
 
 func (c *compileCache) get(key expressionCacheKey) (*vm.Program, bool) {
 	// lru.Get mutates recency state, so it requires exclusive lock.
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	v, ok := c.lru.Get(key)
 	if !ok {
 		return nil, false

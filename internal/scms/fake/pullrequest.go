@@ -618,7 +618,10 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 	}
 
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
-	if prState, ok := pullRequests[prKey]; ok {
+	mutexPR.RLock()
+	prState, ok := pullRequests[prKey]
+	mutexPR.RUnlock()
+	if ok {
 		return fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, prState.id), nil
 	}
 

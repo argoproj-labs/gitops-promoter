@@ -118,3 +118,6 @@ CLAUDE.md
 # Playwright MCP output
 .playwright-mcp/
 
+
+# Race detector reports written by the Ginkgo test targets
+.race-logs.*/
